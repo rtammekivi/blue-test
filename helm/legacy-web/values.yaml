@@ -1,0 +1,74 @@
+replicaCount: 2
+
+image:
+  php: legacy-web-php-fpm:local
+  nginx: legacy-web-nginx:local
+
+config:
+  APP_NAME: Legacy-Web-Service
+  APP_ENV: production
+  DB_HOST: db.example.internal
+  DB_PORT: "3306"
+  CACHE_HOST: cache.example.internal
+
+secretStore:
+  provider:
+    aws:
+      service: SecretsManager
+      region: eu-west-1
+
+externalSecret:
+  key: legacy-web/db
+
+resources:
+  php:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  nginx:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 64Mi
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+autoscaling:
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+ingress:
+  host: legacy-web.example.com
+  annotations:
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:eu-west-1:123456789012:certificate/00000000-0000-0000-0000-000000000000
+    alb.ingress.kubernetes.io/healthcheck-path: /readyz
+
+networkPolicy:
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 172.20.0.10/32
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/16
+      ports:
+        - port: 3306
+        - port: 6379

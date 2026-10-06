@@ -1,4 +1,14 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", "docker:pinDigests"]
+  "extends": ["config:recommended", "docker:pinDigests"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": ["/^skaffold\\.yaml$/"],
+      "matchStrings": [
+        "remoteChart: (?<depName>\\S+)\\s+repo: (?<registryUrl>\\S+)\\s+version: (?<currentValue>\\S+)"
+      ],
+      "datasourceTemplate": "helm"
+    }
+  ]
 }

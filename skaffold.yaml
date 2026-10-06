@@ -1,0 +1,68 @@
+apiVersion: skaffold/v4beta14
+kind: Config
+metadata:
+  name: addons
+deploy:
+  helm:
+    releases:
+      - name: metrics-server
+        remoteChart: metrics-server
+        repo: https://kubernetes-sigs.github.io/metrics-server/
+        version: 3.14.0
+        namespace: kube-system
+        setValues:
+          args[0]: --kubelet-insecure-tls
+      - name: external-secrets
+        remoteChart: external-secrets
+        repo: https://charts.external-secrets.io
+        version: 2.12.0
+        namespace: external-secrets
+        createNamespace: true
+        wait: true
+---
+apiVersion: skaffold/v4beta14
+kind: Config
+metadata:
+  name: legacy-web
+requires:
+  - configs: [addons]
+build:
+  local:
+    push: false
+  artifacts:
+    - image: legacy-web-php-fpm
+      docker:
+        dockerfile: docker/php-fpm/Dockerfile
+    - image: legacy-web-nginx
+      docker:
+        dockerfile: docker/nginx/Dockerfile
+deploy:
+  helm:
+    releases:
+      - name: legacy-web
+        chartPath: helm/legacy-web
+        overrides:
+          secretStore:
+            provider:
+              aws: null
+              fake:
+                data:
+                  - key: legacy-web/db
+                    value: '{"DB_USER": "app", "DB_PASSWORD": "change-me"}'
+          networkPolicy:
+            egress:
+              - to:
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+                    podSelector:
+                      matchLabels:
+                        k8s-app: kube-dns
+                ports:
+                  - port: 53
+                    protocol: UDP
+                  - port: 53
+                    protocol: TCP
+        setValueTemplates:
+          image.php: "{{.IMAGE_FULLY_QUALIFIED_legacy_web_php_fpm}}"
+          image.nginx: "{{.IMAGE_FULLY_QUALIFIED_legacy_web_nginx}}"
