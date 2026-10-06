@@ -13,10 +13,10 @@ docker build -f docker/nginx/Dockerfile -t legacy-web-nginx .
 ```
 
 Skaffold builds the images, loads them into kind and runs `helm install` for metrics-server, External Secrets
-Operator and `helm/legacy-web` with `kind/values.yaml`:
+Operator and `helm/legacy-web` with local overrides (fake secret provider, kind DNS):
 
 ```bash
-kind create cluster --config kind/cluster.yaml
+kind create cluster --name legacy-web
 skaffold run
 ```
 
