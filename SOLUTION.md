@@ -5,8 +5,7 @@
 
 ## 1. How to run and verify the setup locally?
 
-Prerequisites: Docker or Podman, `kind`, `kubectl`, `helm`, `skaffold`.
-With Podman: `export KIND_EXPERIMENTAL_PROVIDER=podman`.
+Prerequisites: Docker, `kind`, `kubectl`, `helm`, `skaffold`.
 
 ```bash
 docker build -f docker/php-fpm/Dockerfile -t legacy-web-php-fpm .
@@ -43,14 +42,14 @@ kind delete cluster --name legacy-web
 - Logs: Fluent Bit ships container stdout/stderr with Kubernetes metadata to Loki (S3 storage)
 - Metrics: Prometheus with nginx and php-fpm exporter sidecars; FPM pool metrics size `pm.max_children` and the HPA
 - Alerting: `PrometheusRule`s on 5xx rate, latency, HPA at max, FPM queue, restarts
-- Later: OpenTelemetry tracing to Tempo; Sentry for PHP errors and Better Stack for external uptime checks (third-party hosted, data leaves AWS)
+- Later: OpenTelemetry tracing to Tempo; Sentry for PHP errors and Better Stack/Checkly for external uptime checks
 
 ## 3. Production considerations
 
-- GitOps with Argo CD: Terraform creates only AWS resources; a one-time `helm install argo-cd` plus a root app-of-apps, after which Argo CD manages itself, ESO, metrics-server, the Auto Mode `IngressClass` and NetworkPolicy config, and the app
-- Supply chain: SBOM, cosign signing, deploy by digest, Kyverno admits only signed images
+- GitOps with Argo CD: Terraform creates only AWS resources + bootstraps argocd, which will take over self-management and applications' deployments
+- Supply chain: SBOM (if needed), cosign signing, deploy by digest, Kyverno admits only signed images
 - Edge: CloudFront + AWS WAF in front of the ALB
-- Security: Pod Security Admission `restricted`, namespace default-deny NetworkPolicy, private EKS endpoint, KMS for Secrets Manager
+- Security: Pod Security Admission `restricted`, namespace default-deny NetworkPolicy, private EKS endpoint, KMS for Secrets Manager. Trivy runtime scanner
 - Environments: Terragrunt `live/<env>` and per-environment Argo CD values, plans reviewed in CI
 - Capacity: load test to size requests, limits and `pm.max_children`
 
