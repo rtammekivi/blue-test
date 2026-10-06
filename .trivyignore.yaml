@@ -1,0 +1,5 @@
+misconfigurations:
+  - id: KSV-01010
+    paths:
+      - templates/configmap.yaml
+    statement: DB_PORT is a port number, not a credential

@@ -1,0 +1,119 @@
+name: images
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    strategy:
+      matrix:
+        runner: [ubuntu-26.04, ubuntu-26.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build php-fpm
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/php-fpm/Dockerfile
+          tags: legacy-web-php-fpm:ci
+          load: true
+          cache-from: type=gha,scope=php-fpm-${{ runner.arch }}
+          cache-to: type=gha,mode=max,scope=php-fpm-${{ runner.arch }}
+
+      - name: Build nginx
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/nginx/Dockerfile
+          tags: legacy-web-nginx:ci
+          load: true
+          cache-from: type=gha,scope=nginx-${{ runner.arch }}
+          cache-to: type=gha,mode=max,scope=nginx-${{ runner.arch }}
+
+      - name: Smoke test
+        run: |
+          for image in legacy-web-php-fpm:ci legacy-web-nginx:ci; do
+            test "$(docker run --rm --entrypoint id "$image" -u)" != 0
+          done
+          docker run -d --name php --read-only --cap-drop ALL --security-opt no-new-privileges \
+            legacy-web-php-fpm:ci
+          docker run -d --name nginx --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges \
+            --network container:php legacy-web-nginx:ci
+          for path in / /healthz /readyz; do
+            docker run --rm --network container:php curlimages/curl \
+              -sf --retry 10 --retry-connrefused --retry-delay 1 "http://127.0.0.1:8080$path"
+          done
+
+      - name: Container logs
+        if: failure()
+        run: docker logs php; docker logs nginx
+
+      - name: Scan php-fpm
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: legacy-web-php-fpm:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Scan nginx
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: legacy-web-nginx:ci
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+  publish:
+    needs: verify
+    if: github.event_name == 'push'
+    strategy:
+      matrix:
+        image: [php-fpm, nginx]
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-qemu-action@v4
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/legacy-web-${{ matrix.image }}
+          tags: |
+            type=sha
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/${{ matrix.image }}/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: |
+            type=gha,scope=${{ matrix.image }}-X64
+            type=gha,scope=${{ matrix.image }}-ARM64

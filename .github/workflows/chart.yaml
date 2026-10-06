@@ -1,0 +1,25 @@
+name: chart
+
+on:
+  push:
+    branches: [main]
+    paths: ["helm/**", ".trivyignore.yaml"]
+  pull_request:
+    paths: ["helm/**", ".trivyignore.yaml"]
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: helm/legacy-web
+          severity: CRITICAL,HIGH,MEDIUM
+          exit-code: "1"
+          trivyignores: .trivyignore.yaml
